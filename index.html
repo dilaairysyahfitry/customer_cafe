@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Customer - Aplikasi Pemesanan Cafe</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+        body { background: #f8f9fa; color: #333; padding: 20px; }
+        header { text-align: center; margin-bottom: 25px; color: #4a3728; }
+        .container { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 20px; }
+        @media (max-width: 768px) { .container { grid-template-columns: 1fr; } }
+        .box { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); height: fit-content; }
+        h2 { margin-bottom: 15px; color: #4a3728; font-size: 1.2rem; border-bottom: 2px solid #f1f3f5; padding-bottom: 5px; }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 15px; }
+        .menu-card { background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 10px; padding: 12px; text-align: center; display: flex; flex-direction: column; justify-content: space-between; }
+        .menu-icon { font-size: 2.5rem; margin-bottom: 8px; }
+        .menu-name { font-weight: 600; font-size: 0.95rem; margin-bottom: 4px; }
+        .menu-price { color: #c29b74; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; }
+        .btn { background: #4a3728; color: white; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-weight: 500; font-size: 0.85rem; width: 100%; }
+        .btn:hover { background: #5c4533; }
+        .btn-send { background: #28a745; padding: 12px; margin-top: 15px; font-weight: 600; font-size: 1rem; }
+        .btn-send:disabled { background: #6c757d; cursor: not-allowed; }
+        .form-control { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ced4da; border-radius: 6px; font-size: 0.9rem; }
+        .cart-list { max-height: 150px; overflow-y: auto; margin-bottom: 15px; font-size: 0.9rem; }
+        .cart-item { display: flex; justify-content: space-between; margin-bottom: 8px; background: #f8f9fa; padding: 6px 10px; border-radius: 6px; }
+        .status-card { background: #e8f4fd; padding: 12px; border-radius: 8px; margin-top: 10px; font-size: 0.85rem; border-left: 4px solid #004085; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>☕ Kopi Nusantara</h1>
+        <p style="font-size: 0.9rem; opacity: 0.8;">Bisa Diakses dari HP Mana Saja secara Live</p>
+    </header>
+
+    <div class="container">
+        <div class="box">
+            <h2>Daftar Menu Hidangan Cafe</h2>
+            <div class="menu-grid" id="menuDaftar"></div>
+        </div>
+
+        <div class="box">
+            <h2>Keranjang Belanja</h2>
+            <div class="cart-list" id="isiKeranjang">
+                <p style="color:#888; text-align:center; padding: 15px 0;">Keranjang Anda masih kosong.</p>
+            </div>
+            
+            <input type="text" id="namaPembeli" class="form-control" placeholder="Nama Lengkap Anda">
+            <input type="number" id="nomorMeja" class="form-control" placeholder="Nomor Meja Pelanggan">
+            
+            <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 15px; font-size: 1.1rem;">
+                <span>Total Bayar:</span>
+                <span id="totalHarga" style="color: #4a3728;">Rp 0</span>
+            </div>
+            
+            <button class="btn btn-send" id="btnKirim" onclick="kirimKeAdmin()" disabled>Kirim Orderan ke Kasir</button>
+            
+            <h2 style="margin-top: 30px; font-size: 1.1rem;">Status Proses Pesanan Anda</h2>
+            <div id="statusTerkoneksi"><p style="color:#888; font-size:0.85rem;">Belum ada pesanan aktif saat ini.</p></div>
+        </div>
+    </div>
+
+    <script>
+        // ganti dengan URL Realtime Database Firebase Anda sendiri
+        const FIREBASE_URL = "MASUKKAN_URL_FIREBASE_ANDA"; 
+
+        let keranjang = [];
+        let idPesananSaya = null;
+
+        // Ambil Data Menu Secara Real-time dari Server Cloud
+        function amandemenMenuCloud() {
+            fetch(`${FIREBASE_URL}/cafeMenu.json`)
+            .then(res => res.json())
+            .then(data => {
+                const divMenu = document.getElementById('menuDaftar');
+                divMenu.innerHTML = '';
+                
+                if(!data) {
+                    divMenu.innerHTML = '<p style="color:#888; grid-column: 1/-1; text-align:center;">Maaf, menu belum disetup Admin.</p>';
+                    return;
+                }
+
+                Object.keys(data).forEach(key => {
+                    const p = data[key];
+                    divMenu.innerHTML += `
+                        <div class="menu-card">
+                            <div>
+                                <div class="menu-icon">${p.icon || '🍽️'}</div>
+                                <div class="menu-name">${p.name}</div>
+                                <div class="menu-price">Rp ${p.price.toLocaleString('id-ID')}</div>
+                            </div>
+                            <button class="btn" onclick="tambahItem('${p.name}', ${p.price})">Tambah</button>
+                        </div>`;
+                });
+            });
+        }
+
+        function tambahItem(name, price) {
+            const ada = keranjang.find(k => k.name === name);
+            if(ada) { ada.qty++; } else { keranjang.push({ name, price, qty: 1 }); }
+            updateTampilanKeranjang();
+        }
+
+        function updateTampilanKeranjang() {
+            const boxKeranjang = document.getElementById('isiKeranjang');
+            let total = 0;
+            if(keranjang.length === 0) {
+                boxKeranjang.innerHTML = '<p style="color:#888; text-align:center; padding: 15px 0;">Keranjang Anda masih kosong.</p>';
+                document.getElementById('btnKirim').disabled = true;
+                document.getElementById('totalHarga').innerText = "Rp 0";
+                return;
+            }
+            boxKeranjang.innerHTML = '';
+            keranjang.forEach(item => {
+                total += (item.price * item.qty);
+                boxKeranjang.innerHTML += `
+                    <div class="cart-item">
+                        <span><strong>${item.name}</strong> (x${item.qty})</span>
+                        <span>Rp ${(item.price * item.qty).toLocaleString('id-ID')}</span>
+                    </div>`;
+            });
+            document.getElementById('totalHarga').innerText = `Rp ${total.toLocaleString('id-ID')}`;
+            document.getElementById('btnKirim').disabled = false;
+        }
+
+        // KONEKSI CLOUD: KIRIM DATA PESANAN KE FIREBASE
+        function kirimKeAdmin() {
+            const nama = document.getElementById('namaPembeli').value.trim();
+            const meja = document.getElementById('nomorMeja').value.trim();
+
+            if(!nama || !meja) return alert("Harap isi Nama Anda dan Nomor Meja!");
+
+            idPesananSaya = 'ORD-' + Math.floor(Math.random() * 9000 + 1000);
+
+            const dataBaru = {
+                id: idPesananSaya,
+                customer: nama,
+                table: meja,
+                items: keranjang.map(k => `${k.name} (${k.qty}x)`).join(', '),
+                total: keranjang.reduce((sum, k) => sum + (k.price * k.qty), 0),
+                status: 'Pending',
+                time: new Date().toLocaleTimeString('id-ID', {hour:'2-digit', minute:'2-digit'})
+            };
+
+            fetch(`${FIREBASE_URL}/cafeOrders/${idPesananSaya}.json`, {
+                method: 'PUT',
+                body: JSON.stringify(dataBaru)
+            })
+            .then(() => {
+                alert(`Pesanan ${idPesananSaya} terkirim ke Cloud Kasir!`);
+                keranjang = [];
+                document.getElementById('namaPembeli').value = '';
+                document.getElementById('nomorMeja').value = '';
+                updateTampilanKeranjang();
+                mulaiPantauPesananLangsung();
+            });
+        }
+
+        // KONEKSI CLOUD: LONG POLLING MONITOR STATUS TERBARU
+        function mulaiPantauPesananLangsung() {
+            if(!idPesananSaya) return;
+            setInterval(() => {
+                fetch(`${FIREBASE_URL}/cafeOrders/${idPesananSaya}.json`)
+                .then(res => res.json())
+                .then(dataSaya => {
+                    if(dataSaya) {
+                        let warnaStatus = dataSaya.status === 'Selesai' ? '#28a745' : (dataSaya.status === 'Memasak' ? '#007bff' : '#ffc107');
+                        document.getElementById('statusTerkoneksi').innerHTML = `
+                            <div class="status-card" style="border-left-color: ${warnaStatus}">
+                                <strong>ID Transaksi: ${dataSaya.id}</strong><br>
+                                Detail Menu: ${dataSaya.items}<br>
+                                Status Kerja: <span style="font-weight:700; color:${warnaStatus}; text-transform:uppercase;">${dataSaya.status}</span>
+                            </div>`;
+                    }
+                });
+            }, 3000); // Cek status ke server setiap 3 detik
+        }
+
+        // Ambil menu dan lakukan sinkronisasi berkala
+        amandemenMenuCloud();
+        setInterval(amandemenMenuCloud, 5000); // Perbarui menu otomatis setiap 5 detik jika ada menu baru dari admin
+    </script>
+</body>
+</html>
